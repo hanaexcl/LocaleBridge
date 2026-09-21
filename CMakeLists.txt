@@ -45,7 +45,9 @@ set(DETOURS_SRC
 )
 add_library(detours STATIC ${DETOURS_SRC})
 target_include_directories(detours PUBLIC ${detours_SOURCE_DIR}/src)
-target_compile_options(detours PRIVATE /w)  # Detours 自身警告忽略
+# Detours 是用寬鬆模式寫的：用 C++14 + /permissive 編，避免 C++20 嚴格模式的 C2362
+set_target_properties(detours PROPERTIES CXX_STANDARD 14)
+target_compile_options(detours PRIVATE /permissive /w)
 
 add_library(le_common INTERFACE)
 target_include_directories(le_common INTERFACE ${CMAKE_SOURCE_DIR}/src)
