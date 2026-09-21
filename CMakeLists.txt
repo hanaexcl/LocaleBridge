@@ -14,6 +14,9 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # 目標 Windows 10+（IsWow64Process2 等 API 需要），並精簡 windows.h
 add_compile_definitions(_WIN32_WINNT=0x0A00 WINVER=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
 
+# 原始碼是 UTF-8：讓 MSVC 正確編碼窄/寬字串字面量（否則中文訊息會亂碼）
+add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>)
+
 # 依位元決定產物名稱：LocaleHook32/64、LocaleLoader32/64
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(ARCH_SUFFIX "64")
@@ -59,3 +62,5 @@ file(GLOB LOADER_SRC ${CMAKE_SOURCE_DIR}/src/loader/*.cpp ${CMAKE_SOURCE_DIR}/sr
 add_executable(LocaleLoader ${LOADER_SRC})
 set_target_properties(LocaleLoader PROPERTIES OUTPUT_NAME "LocaleLoader${ARCH_SUFFIX}")
 target_link_libraries(LocaleLoader PRIVATE le_common user32)
+# 目標（夢平台/DHProtect）manifest 為 requireAdministrator，loader 必須提權才能 CreateProcess 它們
+target_link_options(LocaleLoader PRIVATE "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
