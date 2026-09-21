@@ -1,21 +1,16 @@
-// LocaleHook.dll —— 用 Microsoft Detours 實作的 per-process 語系模擬（架構對齊
-// InWILL/Locale_Remulator）。
+// LocaleHook.dll —— 用 Microsoft Detours 實作的 per-process 語系模擬。
 //
-// 注入方式（由 loader 與本檔的 CreateProcess hook 使用）都走 Detours：
-//   * DetourCreateProcessWithDllExW / DetourUpdateProcessWithDll 改目標 import table，
-//     讓 DLL 在「正常初始化流程」中載入 —— 對 SecureEngine 而言就是正常匯入的模組，
-//     不是外來注入，故不觸發防竄改（這是手動 APC/CreateRemoteThread 會被擋的原因）。
-//   * 跨位元（x86 保護 loader 產生 x64 遊戲）用 DetourProcessViaHelperW，Detours 會以
-//     另一位元的 rundll32 當 helper 完成注入。
+// 注入（loader 與本檔的 CreateProcess hook 皆用 Detours）：改目標 import table 讓 DLL 在
+// 正常初始化流程中載入，對防竄改殼(如 SecureEngine)而言是正常模組，不觸發偵測。
+// 跨位元（x86 -> x64）用 DetourProcessViaHelperW，以另一位元的 rundll32 當 helper。
 //
-// hook 集合與 LR 一致：locale 查詢、MultiByteToWideChar/WideCharToMultiByte 把 CP_ACP
-// 重導 936、字型強制 GB2312 charset（GDI 依字型 charset 解 DBCS，故不需改 TextOut）、
-// 以及依位元不同的 CreateProcess 傳遞。刻意不 hook RegisterClass/FindWindow（避免像 LR
-// 早期版本破壞平台的視窗偵測）。
+// 語系模擬：GetACP 等回報模擬值；MultiByteToWideChar/WideCharToMultiByte 把 CP_ACP 重導
+// 成模擬 code page（修正走 D3D/一般轉碼的文字）；字型強制 GB2312 charset（GDI 依字型
+// charset 解 DBCS，故不需改 TextOut）。刻意不 hook RegisterClass/FindWindow —— 那會造成
+// 視窗類別名兩端編碼不一致，破壞「啟動器偵測遊戲視窗」的功能。
 #include <windows.h>
 #include <detours.h>
 #include "common/config.hpp"
-#include "common/convert.hpp"
 
 #ifndef GB2312_CHARSET
 #define GB2312_CHARSET 134
@@ -23,8 +18,8 @@
 
 namespace {
 
-char g_dll32[MAX_PATH] = "";  // LocaleHook32.dll 完整路徑
-char g_dll64[MAX_PATH] = "";  // LocaleHook64.dll 完整路徑
+char g_dll32[MAX_PATH] = "";
+char g_dll64[MAX_PATH] = "";
 constexpr bool kSelf64 = sizeof(void*) == 8;
 
 UINT remap(UINT cp) {
@@ -38,7 +33,7 @@ bool proc_is_64(HANDLE h) {
     BOOL wow = FALSE; IsWow64Process(h, &wow); return !wow;
 }
 
-// --- 原函式指標（documented：靜態初始化為真實 API）---
+// --- 原函式指標 ---
 auto OriginalGetACP = GetACP;
 auto OriginalGetOEMCP = GetOEMCP;
 auto OriginalGetCPInfo = GetCPInfo;
@@ -77,7 +72,7 @@ int WINAPI HookWideCharToMultiByte(UINT cp, DWORD f, LPCWCH s, int cc, LPSTR o, 
     return OriginalWideCharToMultiByte(remap(cp), f, s, cc, o, cb, d, u);
 }
 
-// --- 字型：強制 GB2312 charset（GDI 依字型 charset 解 DBCS -> 簡體正確）---
+// --- 字型：強制 GB2312 charset ---
 HFONT WINAPI HookCreateFontA(int h, int w, int e, int o, int wt, DWORD it, DWORD un, DWORD so,
                              DWORD, DWORD op, DWORD cp, DWORD q, DWORD pf, LPCSTR face) {
     return OriginalCreateFontA(h, w, e, o, wt, it, un, so, GB2312_CHARSET, op, cp, q, pf, face);
@@ -94,7 +89,7 @@ HFONT WINAPI HookCreateFontIndirectExA(const ENUMLOGFONTEXDVA* lf) {
 }
 
 // --- 行程傳遞 ---
-// 供 DetourProcessViaHelperW 生 rundll32 用的 CreateProcessW 相容函式，繞過本身的 hook。
+// DetourProcessViaHelperW 生 rundll32 用的 CreateProcessW 相容函式，繞過本身 hook。
 BOOL WINAPI RawCreateProcessW(LPCWSTR app, LPWSTR cmd, LPSECURITY_ATTRIBUTES pa,
                               LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
                               LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) {
@@ -103,21 +98,17 @@ BOOL WINAPI RawCreateProcessW(LPCWSTR app, LPWSTR cmd, LPSECURITY_ATTRIBUTES pa,
     return OriginalCreateProcessW(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
 }
 
-// 依子行程位元選注入法：同位元改 import table，跨位元用 rundll32 helper。
 void inject_child(HANDLE hProc, DWORD pid) {
     bool child64 = proc_is_64(hProc);
     LPCSTR dll = child64 ? g_dll64 : g_dll32;
-    if (child64 == kSelf64) {
-        BOOL ok = DetourUpdateProcessWithDll(hProc, &dll, 1);
-        le::log("  inject pid=%lu 同位元 %s\n", pid, ok ? "OK" : "失敗");
-    } else {
-        BOOL ok = DetourProcessViaHelperW(pid, dll, RawCreateProcessW);
-        le::log("  inject pid=%lu 跨位元(helper) %s\n", pid, ok ? "OK" : "失敗");
-    }
+    if (child64 == kSelf64)
+        DetourUpdateProcessWithDll(hProc, &dll, 1);           // 同位元：改 import table
+    else
+        DetourProcessViaHelperW(pid, dll, RawCreateProcessW); // 跨位元：rundll32 helper
+    (void)pid;
 }
 
-// A/W/InternalW 三個進入點都 hook；深度旗標確保同一次建立只處理一次。
-thread_local int g_depth = 0;
+thread_local int g_depth = 0;  // 防止同一次建立被 A/W/InternalW 重複處理
 
 BOOL WINAPI HookCreateProcessInternalW(HANDLE hTok, LPCWSTR app, LPWSTR cmd,
         LPSECURITY_ATTRIBUTES pa, LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
@@ -126,46 +117,28 @@ BOOL WINAPI HookCreateProcessInternalW(HANDLE hTok, LPCWSTR app, LPWSTR cmd,
         return OriginalCreateProcessInternalW(hTok, app, cmd, pa, ta, inh, flags, env, dir, si, pi, hNewTok);
     bool ws = (flags & CREATE_SUSPENDED) != 0;
     BOOL ok;
-    { ++g_depth;
-      ok = OriginalCreateProcessInternalW(hTok, app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED, env, dir, si, pi, hNewTok);
-      --g_depth; }
-    if (ok) {
-        le::log("CreateProcessInternalW child pid=%lu app=%ls\n", pi->dwProcessId, app ? app : L"(cmd)");
-        inject_child(pi->hProcess, pi->dwProcessId);
-        if (!ws) ResumeThread(pi->hThread);
-    }
+    { ++g_depth; ok = OriginalCreateProcessInternalW(hTok, app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED, env, dir, si, pi, hNewTok); --g_depth; }
+    if (ok) { inject_child(pi->hProcess, pi->dwProcessId); if (!ws) ResumeThread(pi->hThread); }
     return ok;
 }
-
 BOOL WINAPI HookCreateProcessW(LPCWSTR app, LPWSTR cmd, LPSECURITY_ATTRIBUTES pa,
                                LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
                                LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) {
-    if (g_depth > 0)
-        return OriginalCreateProcessW(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
+    if (g_depth > 0) return OriginalCreateProcessW(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
     bool ws = (flags & CREATE_SUSPENDED) != 0;
     BOOL ok;
     { ++g_depth; ok = OriginalCreateProcessW(app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED, env, dir, si, pi); --g_depth; }
-    if (ok) {
-        le::log("CreateProcessW child pid=%lu app=%ls\n", pi->dwProcessId, app ? app : L"(cmd)");
-        inject_child(pi->hProcess, pi->dwProcessId);
-        if (!ws) ResumeThread(pi->hThread);
-    }
+    if (ok) { inject_child(pi->hProcess, pi->dwProcessId); if (!ws) ResumeThread(pi->hThread); }
     return ok;
 }
-
 BOOL WINAPI HookCreateProcessA(LPCSTR app, LPSTR cmd, LPSECURITY_ATTRIBUTES pa,
                                LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
                                LPCSTR dir, LPSTARTUPINFOA si, LPPROCESS_INFORMATION pi) {
-    if (g_depth > 0)
-        return OriginalCreateProcessA(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
+    if (g_depth > 0) return OriginalCreateProcessA(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
     bool ws = (flags & CREATE_SUSPENDED) != 0;
     BOOL ok;
     { ++g_depth; ok = OriginalCreateProcessA(app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED, env, dir, si, pi); --g_depth; }
-    if (ok) {
-        le::log("CreateProcessA child pid=%lu\n", pi->dwProcessId);
-        inject_child(pi->hProcess, pi->dwProcessId);
-        if (!ws) ResumeThread(pi->hThread);
-    }
+    if (ok) { inject_child(pi->hProcess, pi->dwProcessId); if (!ws) ResumeThread(pi->hThread); }
     return ok;
 }
 
@@ -221,8 +194,7 @@ void init_paths(HMODULE self) {
 }  // namespace
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
-    if (DetourIsHelperProcess()) return TRUE;  // 作為 rundll32 helper 被載入時，交給 Detours
-
+    if (DetourIsHelperProcess()) return TRUE;
     if (reason == DLL_PROCESS_ATTACH) {
         DetourRestoreAfterWith();
         init_paths(hModule);
@@ -231,9 +203,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
         AttachAll();
-        LONG err = DetourTransactionCommit();
-        wchar_t self[MAX_PATH]{}; GetModuleFileNameW(hModule, self, MAX_PATH);
-        le::log("hooks attached (ret=%ld) cp=%d 行程=%ls\n", err, le::codepage(), self);
+        DetourTransactionCommit();
     } else if (reason == DLL_PROCESS_DETACH) {
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
