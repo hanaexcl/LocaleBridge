@@ -16,6 +16,7 @@ public partial class MainWindow : Window
         BuildPresetChips();
         ProfileStore.EnsureDefaults();
         ReloadProfiles();
+        SetAddMode();          // 一開啟就是乾淨的「新增」狀態
         RefreshMenuStatus();
     }
 
@@ -28,9 +29,12 @@ public partial class MainWindow : Window
     {
         var list = ProfileStore.Load();
         ProfileList.ItemsSource = list;
-        if (list.Count == 0) { ClearEditor(); return; }
-        var pick = list.FirstOrDefault(p => p.Name == select) ?? list[0];
-        ProfileList.SelectedItem = pick;
+        if (list.Count == 0) { SetAddMode(); return; }
+        if (select != null)
+        {
+            ProfileList.SelectedItem = list.FirstOrDefault(p => p.Name == select) ?? list[0];
+        }
+        // 不預設選取任何項目 → 一開啟就是「新增」模式，操作更直覺
     }
 
     private void ProfileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -41,24 +45,37 @@ public partial class MainWindow : Window
             NameBox.Text = p.Name;
             CpBox.Text = p.CodePage.ToString();
             LcidBox.Text = p.Lcid.ToString("X4");
+            EditorTitle.Text = $"編輯設定檔：{p.Name}";
+            CancelEditBtn.Visibility = Visibility.Visible;
+            // 若不是內建語言，自動展開進階讓使用者看得到編碼
+            bool isPreset = Profile.Presets.Any(x => x.Cp == p.CodePage && x.Lcid == p.Lcid);
+            AdvancedToggle.IsChecked = !isPreset;
         }
     }
 
-    private void ClearEditor()
+    private void SetAddMode()
     {
         _editingOriginalName = null;
-        NameBox.Text = CpBox.Text = LcidBox.Text = "";
+        ProfileList.SelectedItem = null;
+        NameBox.Text = "";
+        CpBox.Text = "936";
+        LcidBox.Text = "0804";
+        EditorTitle.Text = "新增設定檔";
+        CancelEditBtn.Visibility = Visibility.Collapsed;
+        AdvancedToggle.IsChecked = false;
     }
 
     private void New_Click(object sender, RoutedEventArgs e)
     {
-        ProfileList.SelectedItem = null;
-        ClearEditor();
-        NameBox.Text = "新設定檔";
-        CpBox.Text = "936";
-        LcidBox.Text = "0804";
+        SetAddMode();
         NameBox.Focus();
-        NameBox.SelectAll();
+    }
+
+    private void CancelEdit_Click(object sender, RoutedEventArgs e) => SetAddMode();
+
+    private void Advanced_Toggle(object sender, RoutedEventArgs e)
+    {
+        AdvancedPanel.Visibility = AdvancedToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -95,13 +112,17 @@ public partial class MainWindow : Window
             {
                 Content = nm,
                 Style = (Style)FindResource("Ghost"),
-                Margin = new Thickness(0, 0, 8, 8),
-                Padding = new Thickness(12, 6, 12, 6),
-                FontSize = 13,
+                Margin = new Thickness(0, 8, 8, 0),
+                Padding = new Thickness(16, 10, 16, 10),
+                FontSize = 14,
+                Cursor = System.Windows.Input.Cursors.Hand,
             };
             b.Click += (_, _) =>
             {
-                if (string.IsNullOrWhiteSpace(NameBox.Text)) NameBox.Text = nm;
+                // 名稱若空白、或仍是某個內建語言名稱（使用者尚未自訂）→ 一併帶入
+                bool nameUntouched = string.IsNullOrWhiteSpace(NameBox.Text)
+                    || Profile.Presets.Any(x => x.Name == NameBox.Text.Trim());
+                if (nameUntouched) NameBox.Text = nm;
                 CpBox.Text = cp.ToString();
                 LcidBox.Text = lcid.ToString("X4");
             };
