@@ -1,3 +1,4 @@
+using System.IO;
 using Microsoft.Win32;
 
 namespace LocaleBridge;
@@ -70,7 +71,7 @@ public static class ProfileStore
 /// 右鍵選單：寫入 HKCU\Software\Classes\exefile\shell\LocaleBridge，用 ExtendedSubCommands
 /// 串接每個 profile 的子項；點擊執行 LocaleLoader --profile "名稱" "%1"。全程 per-user，免管理員。
 /// </summary>
-public static class ContextMenu
+public static class ShellMenu
 {
     private const string Verb = @"Software\Classes\exefile\shell\LocaleBridge";
 

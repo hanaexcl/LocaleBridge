@@ -74,7 +74,7 @@ public partial class MainWindow : Window
 
         ProfileStore.Save(new Profile { Name = name, CodePage = cp, Lcid = lcid });
         ReloadProfiles(name);
-        if (ContextMenu.IsInstalled()) InstallMenuSilently();  // 讓右鍵選單同步
+        if (ShellMenu.IsInstalled()) InstallMenuSilently();  // 讓右鍵選單同步
     }
 
     private void Delete_Click(object sender, RoutedEventArgs e)
@@ -84,7 +84,7 @@ public partial class MainWindow : Window
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
         ProfileStore.Delete(p.Name);
         ReloadProfiles();
-        if (ContextMenu.IsInstalled()) InstallMenuSilently();
+        if (ShellMenu.IsInstalled()) InstallMenuSilently();
     }
 
     private void BuildPresetChips()
@@ -121,18 +121,18 @@ public partial class MainWindow : Window
     private void InstallMenuSilently()
     {
         var exe = Process.GetCurrentProcess().MainModule?.FileName ?? Path.Combine(BaseDir, "LocaleBridge.exe");
-        ContextMenu.Install(ProfileStore.Load(), LoaderPath, exe);
+        ShellMenu.Install(ProfileStore.Load(), LoaderPath, exe);
     }
 
     private void RemoveMenu_Click(object sender, RoutedEventArgs e)
     {
-        ContextMenu.Uninstall();
+        ShellMenu.Uninstall();
         RefreshMenuStatus();
     }
 
     private void RefreshMenuStatus()
     {
-        MenuStatus.Text = ContextMenu.IsInstalled() ? "狀態：已安裝" : "狀態：未安裝";
+        MenuStatus.Text = ShellMenu.IsInstalled() ? "狀態：已安裝" : "狀態：未安裝";
     }
 
     // ---- 立即啟動 ----
