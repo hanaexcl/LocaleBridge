@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(LocaleBridge CXX)
+project(LocaleBridge C CXX)  # 需要 C：MinHook 是 C 原始碼
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
