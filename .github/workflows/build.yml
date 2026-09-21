@@ -1,0 +1,35 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure & build x64
+        run: |
+          cmake -B build-x64 -A x64
+          cmake --build build-x64 --config Release
+
+      - name: Configure & build x86
+        run: |
+          cmake -B build-x86 -A Win32
+          cmake --build build-x86 --config Release
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item build-x64/Release/LocaleHook64.dll   dist/
+          Copy-Item build-x64/Release/LocaleLoader64.exe dist/
+          Copy-Item build-x86/Release/LocaleHook32.dll   dist/
+          Copy-Item build-x86/Release/LocaleLoader32.exe dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocaleBridge
+          path: dist/

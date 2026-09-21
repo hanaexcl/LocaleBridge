@@ -1,0 +1,43 @@
+# ---- 建置產物 ----
+build/
+build-*/
+out/
+dist/
+_deps/
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# ---- Visual Studio / MSVC ----
+.vs/
+*.user
+*.aps
+*.suo
+*.sln
+*.vcxproj*
+
+# ---- JetBrains / VS Code ----
+.idea/
+.vscode/
+
+# ---- Python 殘留（此目錄原為 PyCharm 專案）----
+.venv/
+__pycache__/
+*.pyc
+
+# ---- Claude Code / 本機設定 ----
+.claude/
+
+# ---- 作業系統 ----
+Thumbs.db
+Desktop.ini
+.DS_Store
