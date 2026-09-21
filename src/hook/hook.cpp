@@ -103,46 +103,71 @@ BOOL WINAPI RawCreateProcessW(LPCWSTR app, LPWSTR cmd, LPSECURITY_ATTRIBUTES pa,
     return OriginalCreateProcessW(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
 }
 
+// 依子行程位元選注入法：同位元改 import table，跨位元用 rundll32 helper。
 void inject_child(HANDLE hProc, DWORD pid) {
     bool child64 = proc_is_64(hProc);
     LPCSTR dll = child64 ? g_dll64 : g_dll32;
     if (child64 == kSelf64) {
         BOOL ok = DetourUpdateProcessWithDll(hProc, &dll, 1);
-        le::log("inject child pid=%lu 同位元 %s\n", pid, ok ? "OK" : "失敗");
+        le::log("  inject pid=%lu 同位元 %s\n", pid, ok ? "OK" : "失敗");
     } else {
         BOOL ok = DetourProcessViaHelperW(pid, dll, RawCreateProcessW);
-        le::log("inject child pid=%lu 跨位元(helper) %s\n", pid, ok ? "OK" : "失敗");
+        le::log("  inject pid=%lu 跨位元(helper) %s\n", pid, ok ? "OK" : "失敗");
     }
 }
 
-#ifdef _WIN64  // 64 位元行程：hook CreateProcessA/W（用 DetourCreateProcessWithDllEx）
-BOOL WINAPI HookCreateProcessW(LPCWSTR app, LPWSTR cmd, LPSECURITY_ATTRIBUTES pa,
-                               LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
-                               LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) {
-    le::log("HookCreateProcessW\n");
-    return DetourCreateProcessWithDllExW(app, cmd, pa, ta, inh, flags, env, dir, si, pi,
-                                         g_dll64, OriginalCreateProcessW);
-}
-BOOL WINAPI HookCreateProcessA(LPCSTR app, LPSTR cmd, LPSECURITY_ATTRIBUTES pa,
-                               LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
-                               LPCSTR dir, LPSTARTUPINFOA si, LPPROCESS_INFORMATION pi) {
-    le::log("HookCreateProcessA\n");
-    return DetourCreateProcessWithDllExA(app, cmd, pa, ta, inh, flags, env, dir, si, pi,
-                                         g_dll64, OriginalCreateProcessA);
-}
-#else  // 32 位元行程：hook CreateProcessInternalW（保護型 loader 走這條）
+// A/W/InternalW 三個進入點都 hook；深度旗標確保同一次建立只處理一次。
+thread_local int g_depth = 0;
+
 BOOL WINAPI HookCreateProcessInternalW(HANDLE hTok, LPCWSTR app, LPWSTR cmd,
         LPSECURITY_ATTRIBUTES pa, LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
         LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi, PHANDLE hNewTok) {
-    if (!OriginalCreateProcessInternalW(hTok, app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED,
-                                        env, dir, si, pi, hNewTok))
-        return FALSE;
-    le::log("HookCreateProcessInternalW child pid=%lu app=%ls\n", pi->dwProcessId, app ? app : L"(cmd)");
-    inject_child(pi->hProcess, pi->dwProcessId);
-    if (!(flags & CREATE_SUSPENDED)) ResumeThread(pi->hThread);
-    return TRUE;
+    if (g_depth > 0)
+        return OriginalCreateProcessInternalW(hTok, app, cmd, pa, ta, inh, flags, env, dir, si, pi, hNewTok);
+    bool ws = (flags & CREATE_SUSPENDED) != 0;
+    BOOL ok;
+    { ++g_depth;
+      ok = OriginalCreateProcessInternalW(hTok, app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED, env, dir, si, pi, hNewTok);
+      --g_depth; }
+    if (ok) {
+        le::log("CreateProcessInternalW child pid=%lu app=%ls\n", pi->dwProcessId, app ? app : L"(cmd)");
+        inject_child(pi->hProcess, pi->dwProcessId);
+        if (!ws) ResumeThread(pi->hThread);
+    }
+    return ok;
 }
-#endif
+
+BOOL WINAPI HookCreateProcessW(LPCWSTR app, LPWSTR cmd, LPSECURITY_ATTRIBUTES pa,
+                               LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
+                               LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) {
+    if (g_depth > 0)
+        return OriginalCreateProcessW(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
+    bool ws = (flags & CREATE_SUSPENDED) != 0;
+    BOOL ok;
+    { ++g_depth; ok = OriginalCreateProcessW(app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED, env, dir, si, pi); --g_depth; }
+    if (ok) {
+        le::log("CreateProcessW child pid=%lu app=%ls\n", pi->dwProcessId, app ? app : L"(cmd)");
+        inject_child(pi->hProcess, pi->dwProcessId);
+        if (!ws) ResumeThread(pi->hThread);
+    }
+    return ok;
+}
+
+BOOL WINAPI HookCreateProcessA(LPCSTR app, LPSTR cmd, LPSECURITY_ATTRIBUTES pa,
+                               LPSECURITY_ATTRIBUTES ta, BOOL inh, DWORD flags, LPVOID env,
+                               LPCSTR dir, LPSTARTUPINFOA si, LPPROCESS_INFORMATION pi) {
+    if (g_depth > 0)
+        return OriginalCreateProcessA(app, cmd, pa, ta, inh, flags, env, dir, si, pi);
+    bool ws = (flags & CREATE_SUSPENDED) != 0;
+    BOOL ok;
+    { ++g_depth; ok = OriginalCreateProcessA(app, cmd, pa, ta, inh, flags | CREATE_SUSPENDED, env, dir, si, pi); --g_depth; }
+    if (ok) {
+        le::log("CreateProcessA child pid=%lu\n", pi->dwProcessId);
+        inject_child(pi->hProcess, pi->dwProcessId);
+        if (!ws) ResumeThread(pi->hThread);
+    }
+    return ok;
+}
 
 void AttachAll() {
     DetourAttach(&(PVOID&)OriginalGetACP, HookGetACP);
@@ -158,13 +183,10 @@ void AttachAll() {
     DetourAttach(&(PVOID&)OriginalCreateFontA, HookCreateFontA);
     DetourAttach(&(PVOID&)OriginalCreateFontIndirectA, HookCreateFontIndirectA);
     DetourAttach(&(PVOID&)OriginalCreateFontIndirectExA, HookCreateFontIndirectExA);
-#ifdef _WIN64
     DetourAttach(&(PVOID&)OriginalCreateProcessA, HookCreateProcessA);
     DetourAttach(&(PVOID&)OriginalCreateProcessW, HookCreateProcessW);
-#else
     if (OriginalCreateProcessInternalW)
         DetourAttach(&(PVOID&)OriginalCreateProcessInternalW, HookCreateProcessInternalW);
-#endif
 }
 
 void DetachAll() {
@@ -181,13 +203,10 @@ void DetachAll() {
     DetourDetach(&(PVOID&)OriginalCreateFontA, HookCreateFontA);
     DetourDetach(&(PVOID&)OriginalCreateFontIndirectA, HookCreateFontIndirectA);
     DetourDetach(&(PVOID&)OriginalCreateFontIndirectExA, HookCreateFontIndirectExA);
-#ifdef _WIN64
     DetourDetach(&(PVOID&)OriginalCreateProcessA, HookCreateProcessA);
     DetourDetach(&(PVOID&)OriginalCreateProcessW, HookCreateProcessW);
-#else
     if (OriginalCreateProcessInternalW)
         DetourDetach(&(PVOID&)OriginalCreateProcessInternalW, HookCreateProcessInternalW);
-#endif
 }
 
 void init_paths(HMODULE self) {
