@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include <cstdlib>
 #include <cstdio>
+#include <share.h>
 #include <string>
 
 namespace le {
@@ -35,6 +36,17 @@ inline bool logging() {
     return true;
 }
 
+// 本模組（hook 時是 DLL、loader 時是 EXE）的 HMODULE —— 用來定位 log 檔要寫的目錄。
+inline HMODULE g_self_module() {
+    static HMODULE m = nullptr;
+    if (!m) {
+        GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCSTR>(&g_self_module), &m);
+    }
+    return m;
+}
+
 inline const char* proc_base() {
     static char name[64] = "";
     if (!name[0]) {
@@ -57,8 +69,17 @@ inline void log(const char* fmt, ...) {
     _snprintf_s(line, sizeof(line), _TRUNCATE, "[LocaleBridge] %s(%lu): %s",
                 proc_base(), GetCurrentProcessId(), msg);
     OutputDebugStringA(line);
-    // 同時寫檔，方便收集（多行程共享附加）
-    FILE* f = _fsopen("C:\\ProgramData\\LocaleBridge.log", "a", _SH_DENYNO);
+
+    // 寫到「本模組(DLL/EXE)所在目錄」的 LocaleBridge.log —— 也就是 dist 資料夾。
+    static char logpath[MAX_PATH] = "";
+    if (!logpath[0]) {
+        char dir[MAX_PATH]{};
+        GetModuleFileNameA(g_self_module(), dir, MAX_PATH);
+        char* p = strrchr(dir, '\\');
+        if (p) *p = '\0';
+        _snprintf_s(logpath, sizeof(logpath), _TRUNCATE, "%s\\LocaleBridge.log", dir);
+    }
+    FILE* f = _fsopen(logpath, "a", _SH_DENYNO);
     if (f) { fputs(line, f); fclose(f); }
 }
 
