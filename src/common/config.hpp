@@ -28,19 +28,38 @@ inline LCID lcid() {
     return l;
 }
 
+// 除錯階段預設開啟；設定環境變數 LOCALEBRIDGE_LOG=0 可關閉。
 inline bool logging() {
-    static bool on = GetEnvironmentVariableA("LOCALEBRIDGE_LOG", nullptr, 0) > 0;
-    return on;
+    char v[8]{};
+    if (GetEnvironmentVariableA("LOCALEBRIDGE_LOG", v, sizeof(v)) && v[0] == '0') return false;
+    return true;
+}
+
+inline const char* proc_base() {
+    static char name[64] = "";
+    if (!name[0]) {
+        char path[MAX_PATH]{};
+        GetModuleFileNameA(nullptr, path, MAX_PATH);
+        const char* p = strrchr(path, '\\');
+        _snprintf_s(name, sizeof(name), _TRUNCATE, "%s", p ? p + 1 : path);
+    }
+    return name;
 }
 
 inline void log(const char* fmt, ...) {
     if (!logging()) return;
-    char buf[512];
-    int k = _snprintf_s(buf, sizeof(buf), _TRUNCATE, "[LocaleBridge] ");
+    char msg[512];
     va_list ap; va_start(ap, fmt);
-    _vsnprintf_s(buf + k, sizeof(buf) - k, _TRUNCATE, fmt, ap);
+    _vsnprintf_s(msg, sizeof(msg), _TRUNCATE, fmt, ap);
     va_end(ap);
-    OutputDebugStringA(buf);
+
+    char line[640];
+    _snprintf_s(line, sizeof(line), _TRUNCATE, "[LocaleBridge] %s(%lu): %s",
+                proc_base(), GetCurrentProcessId(), msg);
+    OutputDebugStringA(line);
+    // 同時寫檔，方便收集（多行程共享附加）
+    FILE* f = _fsopen("C:\\ProgramData\\LocaleBridge.log", "a", _SH_DENYNO);
+    if (f) { fputs(line, f); fclose(f); }
 }
 
 // 與本行程「同位元」的 hook DLL 名稱（子行程同位元時直接注入這個）

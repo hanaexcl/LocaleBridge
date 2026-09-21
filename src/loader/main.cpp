@@ -29,10 +29,13 @@ int do_inject(DWORD pid, DWORD tid) {
         PROCESS_QUERY_INFORMATION, FALSE, pid);
     HANDLE hThread = OpenThread(THREAD_SET_CONTEXT, FALSE, tid);
     if (!hProc || !hThread) {
-        le::log("do_inject OpenProcess/Thread 失敗 pid=%lu tid=%lu\n", pid, tid);
+        le::log("--inject OpenProcess/Thread 失敗 pid=%lu tid=%lu err=%lu\n",
+                pid, tid, GetLastError());
         return 1;
     }
     bool ok = le::queue_loadlibrary_apc(hProc, hThread, hook_dll_path());
+    le::log("--inject pid=%lu tid=%lu 排 APC %s (dll=%ls)\n",
+            pid, tid, ok ? "OK" : "失敗", hook_dll_path().c_str());
     CloseHandle(hThread);
     CloseHandle(hProc);
     return ok ? 0 : 1;
@@ -51,6 +54,8 @@ int do_launch(const std::wstring& cmdline) {
 
     bool child64 = le::process_is_64bit(pi.hProcess);
     bool self64 = sizeof(void*) == 8;
+    le::log("launch pid=%lu child64=%d self64=%d cmd=%ls\n",
+            pi.dwProcessId, child64, self64, cmdline.c_str());
     bool ok;
     if (child64 == self64) {
         ok = le::queue_loadlibrary_apc(pi.hProcess, pi.hThread, hook_dll_path());
