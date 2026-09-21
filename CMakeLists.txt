@@ -22,19 +22,23 @@ else()
 endif()
 
 # --- MinHook（inline hook 引擎）---
-# 只抓原始碼、不走它的 CMakeLists（其 target 名稱不穩），直接把 .c 編進 DLL。
+# v1.3.3 沒有 CMakeLists，所以只 Populate（純下載），把 .c 直接編進 DLL。
 include(FetchContent)
 FetchContent_Declare(
   minhook
   GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
   GIT_TAG        v1.3.3
-  SOURCE_SUBDIR  __no_cmake__
 )
-FetchContent_MakeAvailable(minhook)
+FetchContent_GetProperties(minhook)
+if(NOT minhook_POPULATED)
+  FetchContent_Populate(minhook)
+endif()
 file(GLOB MINHOOK_SRC
   ${minhook_SOURCE_DIR}/src/*.c
   ${minhook_SOURCE_DIR}/src/hde/*.c
 )
+list(LENGTH MINHOOK_SRC _mh_count)
+message(STATUS "MinHook: ${_mh_count} source files from ${minhook_SOURCE_DIR}")
 
 # --- 共用 ---
 add_library(le_common INTERFACE)
