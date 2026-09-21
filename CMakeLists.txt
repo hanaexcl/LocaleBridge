@@ -11,6 +11,9 @@ endif()
 # 靜態連結 CRT，讓產物不依賴 VC++ Redistributable，注入時更省事
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# 目標 Windows 10+（IsWow64Process2 等 API 需要），並精簡 windows.h
+add_compile_definitions(_WIN32_WINNT=0x0A00 WINVER=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
+
 # 依位元決定產物名稱：LocaleHook32/64、LocaleLoader32/64
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(ARCH_SUFFIX "64")
@@ -36,6 +39,8 @@ file(GLOB HOOK_SRC ${CMAKE_SOURCE_DIR}/src/hook/*.cpp ${CMAKE_SOURCE_DIR}/src/co
 add_library(LocaleHook SHARED ${HOOK_SRC})
 set_target_properties(LocaleHook PROPERTIES OUTPUT_NAME "LocaleHook${ARCH_SUFFIX}")
 target_link_libraries(LocaleHook PRIVATE le_common minhook gdi32 user32)
+# MinHook 這個 tag 的 CMakeLists 沒把 include 目錄設成 PUBLIC，明確補上
+target_include_directories(LocaleHook PRIVATE ${minhook_SOURCE_DIR}/include)
 
 # --- Loader EXE ---
 file(GLOB LOADER_SRC ${CMAKE_SOURCE_DIR}/src/loader/*.cpp ${CMAKE_SOURCE_DIR}/src/common/*.cpp)
