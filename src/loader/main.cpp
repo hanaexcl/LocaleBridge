@@ -1,21 +1,20 @@
-// LocaleLoader —— 啟動目標並注入 LocaleHook，之後常駐監看，捕捉那些「從保護型
-// loader 內部攔不到建立」的子行程（例如 MSango.bin），從外部把 hook 注入它們。
+// LocaleLoader —— 啟動目標並注入 LocaleHook，之後常駐監看作為「後備」：
+// 正常情況下遊戲本體會在建立當下就被 hook 傳遞注入（早期、SecureEngine 上線前）。
+// 萬一早期注入沒趕上，watcher 會在寬限期後、且確認 DLL 尚未載入時，才從外部補注入。
 //
 //   LocaleLoader32.exe  <target.exe> [args...]     一般用法（啟動 + 常駐監看）
 //   LocaleLoaderNN.exe  --inject <pid> <tid>       委派：對 suspended 行程排 APC（不 resume）
-//   LocaleLoaderNN.exe  --inject-running <pid>     委派：對執行中行程用 CreateRemoteThread 注入
+//   LocaleLoaderNN.exe  --inject-running <pid>     委派：對執行中行程注入（已載入則略過）
 #include <windows.h>
 #include <tlhelp32.h>
 #include <string>
 #include <set>
+#include <map>
 #include "common/config.hpp"
 #include "common/inject.hpp"
 
 namespace {
 
-// 監看範圍：這些名稱的行程若出現且尚未注入，就注入它們。
-// 平台鏈（夢平台/DHPlatform/awesomium/DHProtect）已由 hook 傳遞注入，這裡主要補
-// 保護型 loader 底下抓不到的遊戲本體。列出來的都補一次（已注入的會是 no-op）。
 const wchar_t* WATCH_NAMES[] = {L"msango.bin"};
 
 std::wstring hook_dll_path() {
@@ -37,6 +36,20 @@ bool is_watch_target(const std::wstring& exe) {
     return false;
 }
 
+// 該行程是否已載入我們的 hook DLL（只在同位元下可靠；跨位元交給同位元 loader 判斷）。
+bool has_hook_loaded(DWORD pid) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+    if (snap == INVALID_HANDLE_VALUE) return false;
+    MODULEENTRY32W me{sizeof(me)};
+    bool found = false;
+    if (Module32FirstW(snap, &me)) {
+        do { if (wcsstr(me.szModule, L"LocaleHook")) { found = true; break; } }
+        while (Module32NextW(snap, &me));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
 bool run_and_wait(const std::wstring& cmdline, DWORD ms) {
     STARTUPINFOW si{sizeof(si)};
     PROCESS_INFORMATION pi{};
@@ -44,61 +57,63 @@ bool run_and_wait(const std::wstring& cmdline, DWORD ms) {
     if (!CreateProcessW(nullptr, c.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi))
         return false;
     WaitForSingleObject(pi.hProcess, ms);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
     return true;
 }
 
-// 對「執行中」行程注入（位元自適應）：同位元 CreateRemoteThread，跨位元委派同位元 loader。
-bool inject_running_pid(DWORD pid) {
+// 對「執行中」行程注入（位元自適應）：同位元直接注入，跨位元委派同位元 loader。
+void inject_running_pid(DWORD pid) {
     HANDLE h = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
                            PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
-    if (!h) { le::log("watcher OpenProcess pid=%lu 失敗 err=%lu\n", pid, GetLastError()); return false; }
+    if (!h) { le::log("watcher OpenProcess pid=%lu 失敗 err=%lu\n", pid, GetLastError()); return; }
     bool child64 = le::process_is_64bit(h);
     bool self64 = sizeof(void*) == 8;
-    bool ok;
     if (child64 == self64) {
-        ok = le::inject_running(h, hook_dll_path());
+        if (has_hook_loaded(pid)) { le::log("watcher pid=%lu 已載入，略過\n", pid); CloseHandle(h); return; }
+        bool ok = le::inject_running(h, hook_dll_path());
         le::log("watcher 同位元注入 pid=%lu %s\n", pid, ok ? "OK" : "失敗");
     } else {
         std::wstring loader = le::module_dir(nullptr) +
             (child64 ? L"\\LocaleLoader64.exe" : L"\\LocaleLoader32.exe");
-        ok = run_and_wait(L"\"" + loader + L"\" --inject-running " + std::to_wstring(pid), 15000);
-        le::log("watcher 跨位元委派 pid=%lu -> %ls %s\n", pid, loader.c_str(), ok ? "OK" : "失敗");
+        run_and_wait(L"\"" + loader + L"\" --inject-running " + std::to_wstring(pid), 15000);
+        le::log("watcher 跨位元委派 pid=%lu -> %ls\n", pid, loader.c_str());
     }
     CloseHandle(h);
-    return ok;
 }
 
-// 常駐監看：遊戲行程一出現就注入，直到整個平台/遊戲樹都消失才結束。
+// 常駐監看：目標行程出現後給一段寬限期讓早期注入完成，逾期仍未注入才後備補注入。
 void watch_loop() {
+    const ULONGLONG GRACE_MS = 3000;
     std::set<DWORD> done;
+    std::map<DWORD, ULONGLONG> first_seen;
     done.insert(GetCurrentProcessId());
     bool seen = false;
     int empty_ticks = 0;
     for (;;) {
         HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         PROCESSENTRY32W e{sizeof(e)};
-        int watch_alive = 0;
+        int alive = 0;
         if (Process32FirstW(snap, &e)) {
             do {
-                std::wstring name = e.szExeFile;
-                if (!is_watch_target(name)) continue;
-                ++watch_alive;
-                if (done.count(e.th32ProcessID)) continue;
-                done.insert(e.th32ProcessID);
-                seen = true;
-                le::log("watcher 偵測到 %ls pid=%lu，注入中\n", name.c_str(), e.th32ProcessID);
-                inject_running_pid(e.th32ProcessID);
+                if (!is_watch_target(e.szExeFile)) continue;
+                ++alive; seen = true;
+                DWORD pid = e.th32ProcessID;
+                if (done.count(pid)) continue;
+                ULONGLONG now = GetTickCount64();
+                auto it = first_seen.find(pid);
+                if (it == first_seen.end()) {
+                    first_seen[pid] = now;
+                    le::log("watcher 發現 %ls pid=%lu，等待早期注入…\n", e.szExeFile, pid);
+                    continue;
+                }
+                if (now - it->second < GRACE_MS) continue;  // 給早期注入時間
+                done.insert(pid);
+                le::log("watcher 寬限期滿，後備處理 pid=%lu\n", pid);
+                inject_running_pid(pid);
             } while (Process32NextW(snap, &e));
         }
         CloseHandle(snap);
-
-        if (seen && watch_alive == 0) {
-            if (++empty_ticks > 100) break;  // 目標消失約 2 秒 -> 結束監看
-        } else {
-            empty_ticks = 0;
-        }
+        if (seen && alive == 0) { if (++empty_ticks > 100) break; } else empty_ticks = 0;
         Sleep(20);
     }
     le::log("watcher 結束\n");
@@ -119,7 +134,8 @@ int do_inject(DWORD pid, DWORD tid) {  // 對 suspended 行程排 APC，不 resu
     return ok ? 0 : 1;
 }
 
-int do_inject_running(DWORD pid) {  // 對執行中行程 CreateRemoteThread 注入
+int do_inject_running(DWORD pid) {  // 對執行中行程注入（已載入則略過）
+    if (has_hook_loaded(pid)) { le::log("--inject-running pid=%lu 已載入，略過\n", pid); return 0; }
     HANDLE h = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
                            PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
     if (!h) { le::log("--inject-running OpenProcess pid=%lu 失敗 err=%lu\n", pid, GetLastError()); return 1; }
@@ -151,10 +167,9 @@ int do_launch(const std::wstring& cmdline) {
                      std::to_wstring(GetThreadId(pi.hThread)), 15000);
     }
     ResumeThread(pi.hThread);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
 
-    watch_loop();  // 常駐，捕捉保護型 loader 底下抓不到的遊戲行程
+    watch_loop();
     return 0;
 }
 
