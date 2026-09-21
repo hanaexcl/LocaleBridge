@@ -22,13 +22,19 @@ else()
 endif()
 
 # --- MinHook（inline hook 引擎）---
+# 只抓原始碼、不走它的 CMakeLists（其 target 名稱不穩），直接把 .c 編進 DLL。
 include(FetchContent)
 FetchContent_Declare(
   minhook
   GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
   GIT_TAG        v1.3.3
+  SOURCE_SUBDIR  __no_cmake__
 )
 FetchContent_MakeAvailable(minhook)
+file(GLOB MINHOOK_SRC
+  ${minhook_SOURCE_DIR}/src/*.c
+  ${minhook_SOURCE_DIR}/src/hde/*.c
+)
 
 # --- 共用 ---
 add_library(le_common INTERFACE)
@@ -36,10 +42,9 @@ target_include_directories(le_common INTERFACE ${CMAKE_SOURCE_DIR}/src)
 
 # --- Hook DLL ---
 file(GLOB HOOK_SRC ${CMAKE_SOURCE_DIR}/src/hook/*.cpp ${CMAKE_SOURCE_DIR}/src/common/*.cpp)
-add_library(LocaleHook SHARED ${HOOK_SRC})
+add_library(LocaleHook SHARED ${HOOK_SRC} ${MINHOOK_SRC})
 set_target_properties(LocaleHook PROPERTIES OUTPUT_NAME "LocaleHook${ARCH_SUFFIX}")
-target_link_libraries(LocaleHook PRIVATE le_common minhook gdi32 user32)
-# MinHook 這個 tag 的 CMakeLists 沒把 include 目錄設成 PUBLIC，明確補上
+target_link_libraries(LocaleHook PRIVATE le_common gdi32 user32)
 target_include_directories(LocaleHook PRIVATE ${minhook_SOURCE_DIR}/include)
 
 # --- Loader EXE ---
