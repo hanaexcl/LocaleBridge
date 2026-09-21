@@ -25,7 +25,7 @@
     <FontFamily x:Key="UiFont">Segoe UI, Microsoft JhengHei UI, Microsoft YaHei UI</FontFamily>
 
     <!-- ===== 卡片 ===== -->
-    <Style x:Key="Card" TargetType="Border">
+    <Style x:Key="CardStyle" TargetType="Border">
       <Setter Property="Background" Value="{StaticResource Card}" />
       <Setter Property="BorderBrush" Value="{StaticResource Border}" />
       <Setter Property="BorderThickness" Value="1" />

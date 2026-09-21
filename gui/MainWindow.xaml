@@ -25,7 +25,7 @@
       </Grid.ColumnDefinitions>
 
       <!-- 左：設定檔清單 -->
-      <Border Grid.Column="0" Style="{StaticResource Card}" Padding="14">
+      <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="14">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -60,7 +60,7 @@
       <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
         <StackPanel>
           <!-- 編輯設定檔 -->
-          <Border Style="{StaticResource Card}">
+          <Border Style="{StaticResource CardStyle}">
             <StackPanel>
               <TextBlock Text="編輯設定檔" Style="{StaticResource Label}" FontSize="13" Margin="0,0,0,14" />
               <TextBlock Text="名稱" Style="{StaticResource Label}" />
@@ -88,7 +88,7 @@
           </Border>
 
           <!-- 右鍵選單 -->
-          <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+          <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
             <StackPanel>
               <TextBlock Text="檔案總管右鍵選單" Style="{StaticResource Label}" FontSize="13" Margin="0,0,0,8" />
               <TextBlock Style="{StaticResource Hint}"
@@ -103,7 +103,7 @@
           </Border>
 
           <!-- 立即啟動 -->
-          <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+          <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
             <StackPanel>
               <TextBlock Text="立即啟動" Style="{StaticResource Label}" FontSize="13" Margin="0,0,0,8" />
               <TextBlock Style="{StaticResource Hint}" Text="用左側選取的設定檔啟動指定程式。" />
