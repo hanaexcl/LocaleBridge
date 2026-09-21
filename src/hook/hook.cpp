@@ -10,6 +10,8 @@
 // 視窗類別名兩端編碼不一致，破壞「啟動器偵測遊戲視窗」的功能。
 #include <windows.h>
 #include <detours.h>
+#include <cstdio>
+#include <cstring>
 #include "common/config.hpp"
 
 #ifndef GB2312_CHARSET
