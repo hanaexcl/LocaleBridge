@@ -10,10 +10,16 @@
     <AssemblyName>LocaleBridge</AssemblyName>
     <RootNamespace>LocaleBridge</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>LocaleBridge.ico</ApplicationIcon>
     <Version>1.0.0</Version>
     <!-- self-contained：使用者不需另裝 .NET -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 供視窗標題列 Icon 使用 -->
+    <Resource Include="LocaleBridge.ico" />
+  </ItemGroup>
 
 </Project>
