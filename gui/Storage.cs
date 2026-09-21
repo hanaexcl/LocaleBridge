@@ -84,16 +84,17 @@ public static class ShellMenu
     public static void Install(IEnumerable<Profile> profiles, string loaderPath, string iconPath)
     {
         Uninstall();
+        // per-user 串接子選單：父項 MUIVerb + 空字串值 subcommands + shell 子鍵裝各項目
         using (var verb = Registry.CurrentUser.CreateSubKey(Verb))
         {
             verb.SetValue("MUIVerb", "用 LocaleBridge 啟動");
             verb.SetValue("Icon", $"{iconPath},0");
-            verb.SetValue("Position", "Middle");
+            verb.SetValue("subcommands", "");   // 空字串 = 啟用下方 shell 子鍵串接
         }
         int i = 0;
         foreach (var p in profiles)
         {
-            string sub = $@"{Verb}\ExtendedSubCommands\{i:D2}_{Sanitize(p.Name)}";
+            string sub = $@"{Verb}\shell\{i:D2}_{Sanitize(p.Name)}";
             using (var item = Registry.CurrentUser.CreateSubKey(sub))
                 item.SetValue("MUIVerb", p.Name);
             using (var cmd = Registry.CurrentUser.CreateSubKey($@"{sub}\command"))
