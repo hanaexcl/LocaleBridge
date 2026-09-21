@@ -59,8 +59,9 @@ target_link_libraries(LocaleHook PRIVATE le_common minhook gdi32 user32)
 
 # --- Loader EXE ---
 file(GLOB LOADER_SRC ${CMAKE_SOURCE_DIR}/src/loader/*.cpp ${CMAKE_SOURCE_DIR}/src/common/*.cpp)
-add_executable(LocaleLoader ${LOADER_SRC})
+add_executable(LocaleLoader ${LOADER_SRC} ${CMAKE_SOURCE_DIR}/src/loader/loader.manifest)
 set_target_properties(LocaleLoader PROPERTIES OUTPUT_NAME "LocaleLoader${ARCH_SUFFIX}")
 target_link_libraries(LocaleLoader PRIVATE le_common user32)
-# 目標（夢平台/DHProtect）manifest 為 requireAdministrator，loader 必須提權才能 CreateProcess 它們
-target_link_options(LocaleLoader PRIVATE "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+# 關掉 linker 自動產生的 UAC 片段（預設 asInvoker），改由上面附的 loader.manifest 指定
+# requireAdministrator —— 目標程式需要管理員權限才能被 CreateProcess 啟動。
+target_link_options(LocaleLoader PRIVATE "/MANIFESTUAC:NO")
