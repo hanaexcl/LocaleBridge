@@ -6,6 +6,7 @@
 // profile 從 HKCU\Software\LocaleBridge\Profiles\<名稱> 讀 CodePage/LCID（DWORD），
 // 透過環境變數 LOCALEBRIDGE_CP / LOCALEBRIDGE_LCID 傳給目標（子行程自動繼承）。
 #include <windows.h>
+#include <shellapi.h>
 #include <detours.h>
 #include <string>
 #include "common/config.hpp"
@@ -73,7 +74,11 @@ int fail(const std::wstring& msg) {
 
 }  // namespace
 
-int wmain(int argc, wchar_t** argv) {
+// GUI(WINDOWS)子系統進入點 —— 不會有主控台黑窗。自行取命令列參數。
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) return 1;
     int i = 1;
     std::wstring profile;
     if (i < argc && std::wstring(argv[i]) == L"--profile") {

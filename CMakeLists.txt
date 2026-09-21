@@ -60,9 +60,9 @@ set_target_properties(LocaleHook PROPERTIES OUTPUT_NAME "LocaleHook${ARCH_SUFFIX
 target_link_libraries(LocaleHook PRIVATE le_common detours gdi32 user32)
 
 # --- Loader EXE（requireAdministrator）---
-add_executable(LocaleLoader
+add_executable(LocaleLoader WIN32
   ${CMAKE_SOURCE_DIR}/src/loader/main.cpp
   ${CMAKE_SOURCE_DIR}/src/loader/loader.manifest)
 set_target_properties(LocaleLoader PROPERTIES OUTPUT_NAME "LocaleLoader${ARCH_SUFFIX}")
-target_link_libraries(LocaleLoader PRIVATE le_common detours user32)
-target_link_options(LocaleLoader PRIVATE "/MANIFESTUAC:NO")
+target_link_libraries(LocaleLoader PRIVATE le_common detours user32 shell32)
+target_link_options(LocaleLoader PRIVATE "/MANIFESTUAC:NO" "/ENTRY:wWinMainCRTStartup")
