@@ -40,16 +40,19 @@ file(GLOB MINHOOK_SRC
 list(LENGTH MINHOOK_SRC _mh_count)
 message(STATUS "MinHook: ${_mh_count} source files from ${minhook_SOURCE_DIR}")
 
+# 建成獨立 static lib —— 把 C 原始碼混進 C++ 的 SHARED target，VS generator 不會編。
+add_library(minhook STATIC ${MINHOOK_SRC})
+target_include_directories(minhook PUBLIC ${minhook_SOURCE_DIR}/include)
+
 # --- 共用 ---
 add_library(le_common INTERFACE)
 target_include_directories(le_common INTERFACE ${CMAKE_SOURCE_DIR}/src)
 
 # --- Hook DLL ---
 file(GLOB HOOK_SRC ${CMAKE_SOURCE_DIR}/src/hook/*.cpp ${CMAKE_SOURCE_DIR}/src/common/*.cpp)
-add_library(LocaleHook SHARED ${HOOK_SRC} ${MINHOOK_SRC})
+add_library(LocaleHook SHARED ${HOOK_SRC})
 set_target_properties(LocaleHook PROPERTIES OUTPUT_NAME "LocaleHook${ARCH_SUFFIX}")
-target_link_libraries(LocaleHook PRIVATE le_common gdi32 user32)
-target_include_directories(LocaleHook PRIVATE ${minhook_SOURCE_DIR}/include)
+target_link_libraries(LocaleHook PRIVATE le_common minhook gdi32 user32)
 
 # --- Loader EXE ---
 file(GLOB LOADER_SRC ${CMAKE_SOURCE_DIR}/src/loader/*.cpp ${CMAKE_SOURCE_DIR}/src/common/*.cpp)
