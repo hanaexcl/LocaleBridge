@@ -96,7 +96,10 @@ public static class ShellMenu
         {
             string sub = $@"{Verb}\shell\{i:D2}_{Sanitize(p.Name)}";
             using (var item = Registry.CurrentUser.CreateSubKey(sub))
+            {
                 item.SetValue("MUIVerb", p.Name);
+                item.SetValue("Icon", $"{iconPath},0");
+            }
             using (var cmd = Registry.CurrentUser.CreateSubKey($@"{sub}\command"))
                 cmd.SetValue("", $"\"{loaderPath}\" --profile \"{p.Name}\" \"%1\"");
             i++;
