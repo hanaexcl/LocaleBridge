@@ -33,7 +33,9 @@ static DWORD WINAPI init_thread(LPVOID) {
     le::install_process_hooks();
     // 視窗類函式（RegisterClass / FindWindow）刻意不 hook —— 見 README。
     if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK) { le::log("MH_EnableHook 失敗\n"); return 1; }
-    le::log("hooks 安裝完成，cp=%d\n", le::codepage());
+    wchar_t self[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    le::log("hooks 安裝完成，cp=%d, 行程=%ls\n", le::codepage(), self);
     return 0;
 }
 
