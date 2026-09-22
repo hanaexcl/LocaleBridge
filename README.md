@@ -1,5 +1,7 @@
 # LocaleBridge
 
+**繁體中文** · [English](README.en.md)
+
 以**指定語系（ANSI code page / LCID）啟動任何 Windows 應用程式**，不必更改系統的「非
 Unicode 程式語言」。適合在繁體或英文系統上正確顯示簡體、日文等以舊式 ANSI 編碼寫死的
 程式（遊戲、老軟體）。
@@ -9,7 +11,7 @@ Unicode 程式語言」。適合在繁體或英文系統上正確顯示簡體、
 
 - 原生支援 **x64 與 Windows 11**，用 **Microsoft Detours** 注入。
 - **可對任何 `.exe` 按右鍵**選擇語系設定檔啟動（檔案總管整合）。
-- 附一個乾淨的**設定介面**管理設定檔與右鍵選單。
+- 附一個乾淨的**設定介面**管理設定檔與右鍵選單，介面本身支援**繁體中文 / English**。
 - 針對「啟動器 + 受保護遊戲本體」的兩段式程式特別處理：**不 hook 視窗類別函式**，
   避免破壞啟動器對遊戲視窗的偵測（這是某些語系模擬器會造成「啟動器一直顯示未開始遊戲」
   的原因）。
@@ -41,6 +43,8 @@ Unicode 程式語言」。適合在繁體或英文系統上正確顯示簡體、
   **「用 LocaleBridge 啟動」→（各設定檔）**。
   （Windows 11 傳統選單在「顯示其他選項」中。）
 - **立即啟動**：選一個設定檔、瀏覽要啟動的程式，直接執行。
+- **介面語言**：右上角按鈕可在**繁體中文 / English** 之間切換（記在
+  `HKCU\Software\LocaleBridge\Language`；第一次開啟時依系統語言自動選擇）。
 
 ### 2. 右鍵啟動
 安裝右鍵選單後，於檔案總管對 `.exe` 按右鍵 → 用 LocaleBridge 啟動 → 選語系。
@@ -89,6 +93,14 @@ dotnet publish gui/LocaleBridge.csproj -c Release -r win-x64 --self-contained -o
 
 **沒有本機工具鏈也可以**：本專案內含 GitHub Actions，push 後到 Actions 下載
 `LocaleBridge` artifact（已打包 GUI + 執行期 + 四個原生檔）。
+
+---
+
+## 介面翻譯
+
+所有介面字串集中在 [`gui/Lang.cs`](gui/Lang.cs) 的一張表，每個項目是一個依
+`Lang.Codes` 順序排列的字串陣列。**要加一個語言**：在 `Codes` / `Names` 各加一欄，
+再為每個項目補上同一位置的翻譯即可，不需要 .resx 或衛星組件。
 
 ---
 

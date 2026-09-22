@@ -82,12 +82,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     int i = 1;
     std::wstring profile;
     if (i < argc && std::wstring(argv[i]) == L"--profile") {
-        if (i + 1 >= argc) return fail(L"--profile 後面需要 profile 名稱");
+        if (i + 1 >= argc) return fail(L"--profile 後面需要 profile 名稱\n--profile needs a profile name");
         profile = argv[i + 1];
         i += 2;
     }
     if (i >= argc)
-        return fail(L"用法:\n  LocaleLoader.exe [--profile <名稱>] <目標.exe> [參數...]");
+        return fail(L"用法 / Usage:\n  LocaleLoader.exe [--profile <名稱/name>] <目標/target.exe> [參數/args...]");
 
     apply_profile(profile);
 
@@ -98,7 +98,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     PROCESS_INFORMATION pi{};
     if (!CreateProcessW(nullptr, cmdMut.data(), nullptr, nullptr, FALSE, CREATE_SUSPENDED,
                         nullptr, nullptr, &si, &pi))
-        return fail(L"無法啟動:\n" + cmd + L"\n\nGetLastError=" + std::to_wstring(GetLastError()));
+        return fail(L"無法啟動 / Cannot start:\n" + cmd + L"\n\nGetLastError=" + std::to_wstring(GetLastError()));
 
     bool child64 = proc_is_64(pi.hProcess);
     std::string dll32 = to_ansi(module_dir() + L"\\LocaleHook32.dll");

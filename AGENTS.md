@@ -26,6 +26,11 @@ src/loader/loader.manifest requireAdministrator(目標多為需管理員)
 CMakeLists.txt            建 LocaleHook{32,64}.dll + LocaleLoader{32,64}.exe;FetchContent 抓 Detours 自編
 gui/                      C# WPF 設定介面(net8.0-windows,self-contained)
   App.xaml(主題)  MainWindow.xaml(.cs)  Storage.cs(profiles + 右鍵選單登錄檔)  LocaleBridge.ico
+  Lang.cs                   介面多語系:一張 key → 依 Lang.Codes 排序的字串陣列表 + {l:T Key}
+                            markup extension;語言存 HKCU\Software\LocaleBridge\Language,
+                            首次依系統 UI 語言。切換語言 = 重建 MainWindow(XAML 字串載入時求值)。
+                            加語言:Codes/Names 加一欄 + 每個項目補同位置翻譯。
+README.md / README.en.md    中英文說明(互相連結)
 .github/workflows/build.yml  CI:建 C++(x86/x64)+ dotnet publish GUI → 打包 artifact;打 v* tag 自動發 Release
 ```
 

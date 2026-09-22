@@ -87,7 +87,7 @@ public static class ShellMenu
         // per-user 串接子選單：父項 MUIVerb + 空字串值 subcommands + shell 子鍵裝各項目
         using (var verb = Registry.CurrentUser.CreateSubKey(Verb))
         {
-            verb.SetValue("MUIVerb", "用 LocaleBridge 啟動");
+            verb.SetValue("MUIVerb", Lang.T("ShellVerb"));
             verb.SetValue("Icon", $"{iconPath},0");
             verb.SetValue("subcommands", "");   // 空字串 = 啟用下方 shell 子鍵串接
         }
